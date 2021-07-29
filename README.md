@@ -90,4 +90,4 @@ By donating to the following Haven address, you are supporting the Haven Project
 
 any haven-currency: hvxy8SJK1xoEMZv7wyDspxH8gwTwcRvhVRaLQhq4o8rPYoGA8c6Q9Ey9KFNhQUZcn62q9jZTuU5E2QpoXDM63jyy6YAHZwV1Db
 
-Thank you for your support. The team are very grateful.
+Thank you for your support. The team are very grateful .
