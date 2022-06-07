@@ -27,6 +27,7 @@ class Haven_Gateway extends WC_Payment_Gateway
     private static $testnet = false;
     private static $onion_service = false;
     private static $show_qr = false;
+    private static $use_haven_price_decimals = 12;
 
     private static $cryptonote;
     private static $haven_wallet_rpc;
@@ -78,6 +79,7 @@ class Haven_Gateway extends WC_Payment_Gateway
         self::$testnet = $this->settings['testnet'] == 'yes';
         self::$onion_service = $this->settings['onion_service'] == 'yes';
         self::$show_qr = $this->settings['show_qr'] == 'yes';
+        self::$use_haven_price_decimals = $this->settings['use_haven_price_decimals'];
 
         $explorer_url = self::$testnet ? HAVEN_GATEWAY_TESTNET_EXPLORER_URL : HAVEN_GATEWAY_MAINNET_EXPLORER_URL;
         defined('HAVEN_GATEWAY_EXPLORER_URL') || define('HAVEN_GATEWAY_EXPLORER_URL', $explorer_url);
@@ -254,6 +256,12 @@ class Haven_Gateway extends WC_Payment_Gateway
     {
         global $wpdb;
 
+        if( defined('HAVEN_GATEWAY_DEBUG') && HAVEN_GATEWAY_DEBUG ){
+            self::$log->debug('Haven_Payments', "[STARTUP] Running Haven network update event using " . self::$confirm_type );
+        }else{
+            self::$log->debug('Haven_Payments', "[STARTUP] HAVEN_GATEWAY_DEBUG not set ");
+        }
+        
         // Get current network/wallet height
         if(self::$confirm_type == 'haven-wallet-rpc')
             $height = self::$haven_wallet_rpc->getheight();
@@ -285,6 +293,8 @@ class Haven_Gateway extends WC_Payment_Gateway
                 $pending_payments[$row->payment_id]['txs'][] = $row;
         }
 
+        if( defined('HAVEN_GATEWAY_DEBUG') && HAVEN_GATEWAY_DEBUG )
+            self::$log->debug('Haven_Payments', "[CHECKING] Checking " . count($pending_payments) . " pending payments");
         // Loop through each pending payment and check status
         foreach($pending_payments as $pending) {
             $quote = $pending['quote'];
@@ -417,9 +427,13 @@ class Haven_Gateway extends WC_Payment_Gateway
     public static function check_payment_explorer($payment_id)
     {
         $txs = array();
+
+        self::$log->debug('Haven_Payments', "[CHECK] address:" . self::$address . " viewkey:" . self::$viewkey);
+
         $outputs = self::$haven_explorer_tools->get_outputs(self::$address, self::$viewkey);
         foreach($outputs as $payment) {
             if($payment['payment_id'] == $payment_id) {
+                self::$log->debug('Haven_Payments', "[CHECK] found payment id:" . $payment_id);
                 $txs[] = array(
                     'amount' => $payment['amount'],
                     'currency' => $payment['currency'],
@@ -452,7 +466,7 @@ class Haven_Gateway extends WC_Payment_Gateway
             $heights = array();
             $amount_paid = 0;
             foreach($details as $tx) {
-                
+                $isXHV = $isXHV = ( strcasecmp($tx->currency, 'XHV') === 0 );
                 if(!isset($tx->txid))
                     continue;
                 $txs[] = array(
@@ -460,7 +474,7 @@ class Haven_Gateway extends WC_Payment_Gateway
                     'height' => $tx->height,
                     'currency' => $tx->currency,
                     'amount' => $tx->amount_paid,
-                    'amount_formatted' => self::format_haven($tx->amount_paid)
+                    'amount_formatted' => self::format_haven($tx->amount_paid, $isXHV )
                 );
                 $amount_paid += $tx->amount_paid;
                 $heights[] = $tx->height;
@@ -529,8 +543,8 @@ class Haven_Gateway extends WC_Payment_Gateway
                     $status = 'expired';
                 }
             }
-
-            $amount_formatted = self::format_haven($amount_due);
+            $isXHV = ( strcasecmp($details[0]->currency, 'XHV') === 0 );
+            $amount_formatted = self::format_haven($amount_due, $isXHV);
             $qrcode_uri = 'haven:'.$integrated_addr.'?tx_amount='.$amount_formatted.'&tx_payment_id='.$payment_id;
             $my_order_url = wc_get_endpoint_url('view-order', $order_id, wc_get_page_permalink('myaccount'));
 
@@ -543,12 +557,13 @@ class Haven_Gateway extends WC_Payment_Gateway
                 'rate' => $details[0]->rate,
                 'rate_formatted' => sprintf('%.8f', $details[0]->rate / 1e8),
                 'currency' => $details[0]->currency,
+                'isXHV' => $isXHV,
                 'amount_total' => $amount_total,
                 'amount_paid' => $amount_paid,
                 'amount_due' => $amount_due,
-                'amount_total_formatted' => self::format_haven($amount_total),
-                'amount_paid_formatted' => self::format_haven($amount_paid),
-                'amount_due_formatted' => self::format_haven($amount_due),
+                'amount_total_formatted' => self::format_haven($amount_total, $isXHV),
+                'amount_paid_formatted' => self::format_haven($amount_paid, $isXHV),
+                'amount_due_formatted' => self::format_haven($amount_due, $isXHV),
                 'status' => $status,
                 'created' => $details[0]->created,
                 'order_age' => $order_age_seconds,
@@ -699,9 +714,20 @@ class Haven_Gateway extends WC_Payment_Gateway
         return $virtual_items == $cart_size;
     }
 
-    public static function format_haven($atomic_units) {
-        return sprintf(HAVEN_GATEWAY_ATOMIC_UNITS_SPRINTF, $atomic_units / HAVEN_GATEWAY_ATOMIC_UNITS_POW);
+    //updated to use decimals places from settings admin screen
+    public static function format_haven($atomic_units, $isXHV = false) {
+        $setting_decimals = (int)self::$use_haven_price_decimals;
+        if( $setting_decimals > 0 && $setting_decimals != HAVEN_GATEWAY_ATOMIC_UNITS && !$isXHV){
+
+            return sprintf( '%.'.$setting_decimals.'f' , $atomic_units / HAVEN_GATEWAY_ATOMIC_UNITS_POW);
+
+        }else{
+
+            return sprintf(HAVEN_GATEWAY_ATOMIC_UNITS_SPRINTF, $atomic_units / HAVEN_GATEWAY_ATOMIC_UNITS_POW);
+
+        }
     }
+
 
     public static function format_seconds_to_time($seconds)
     {

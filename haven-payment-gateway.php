@@ -59,6 +59,8 @@ define('HAVEN_GATEWAY_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('HAVEN_GATEWAY_ATOMIC_UNITS_POW', pow(10, HAVEN_GATEWAY_ATOMIC_UNITS));
 define('HAVEN_GATEWAY_ATOMIC_UNITS_SPRINTF', '%.'.HAVEN_GATEWAY_ATOMIC_UNITS.'f');
 
+define('HAVEN_GATEWAY_DEBUG', false);
+
 $xAssetSelected = "";
 
 // Include our Gateway Class and register Payment Gateway with WooCommerce
@@ -122,6 +124,9 @@ function haven_init() {
         $plugin_links = array(
             '<a href="'.admin_url('admin.php?page=haven_gateway_settings').'">'.__('Settings', 'haven_gateway').'</a>'
         );
+        if( defined('HAVEN_GATEWAY_DEBUG') && HAVEN_GATEWAY_DEBUG ){
+          $plugin_links[] = '<a href="'.admin_url('admin.php?page=haven_gateway_debug').'">'.__('Debug', 'haven_gateway').'</a>';
+        }
         return array_merge($plugin_links, $links);
     }
 
@@ -263,6 +268,19 @@ function haven_install() {
         dbDelta($sql);
                 
     }
+
+    
     
 
+}
+
+//check if we are in a debugging setup and can output debug info to the user
+function is_haven_debug(){
+  if( is_admin() && defined('HAVEN_GATEWAY_DEBUG') && HAVEN_GATEWAY_DEBUG) {
+    $screen = get_current_screen();
+    if( $screen && isset( $screen->id) && 'haven-protocol_page_haven_gateway_debug' ){
+      return true;
+    }
+  }
+  return false;
 }

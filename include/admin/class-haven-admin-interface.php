@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2018, Ryo Currency Project, Monero Integrations
  * Admin interface for Haven gateway
- * Authors: mosu-forge
+ * Authors: mosu-forge, bluey.red
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -65,6 +65,7 @@ class Haven_Admin_Interface {
             array($this, 'payments_page')
         );
 
+
         $settings_page = add_submenu_page(
             'haven_gateway',
             __('Settings', 'haven_gateway'),
@@ -74,6 +75,19 @@ class Haven_Admin_Interface {
             array($this, 'settings_page')
         );
         add_action('load-'.$settings_page, array($this, 'settings_page_init'));
+
+        if( defined('HAVEN_GATEWAY_DEBUG') && HAVEN_GATEWAY_DEBUG ){
+
+            $debug_page = add_submenu_page(
+                'haven_gateway',
+                __('Debug', 'haven_gateway'),
+                __('Debug', 'haven_gateway'),
+                'manage_options',
+                'haven_gateway_debug',
+                array($this, 'debug_page_init')
+            );
+
+        }
     }
 
     /**
@@ -126,6 +140,75 @@ class Haven_Admin_Interface {
         }
 
         do_action('woocommerce_settings_page_init');
+    }
+
+
+    /**
+     * A few simple checks that the plugin is working
+     */
+    public function debug_page_init(){
+        global $current_tab, $current_section, $wpdb;
+
+        $current_section = 'haven_gateway';
+        $current_tab = 'debug';
+
+        echo '<h1>Haven Payment Debug Page</h1>';
+        echo '<h2>Database setup</h2>';
+        echo '<pre>';
+        foreach( array('haven_gateway_quotes', 'haven_gateway_quotes_txids', 'haven_gateway_live_rates') as $haven_table_name):
+            $wp_table_name = $wpdb->prefix . $haven_table_name;
+            $table_check = $wpdb->get_var("show tables like '$wp_table_name'");
+            echo '<p>Checking database table &quot;' . $wp_table_name . '&quot; ';
+            if( $table_check == $wp_table_name):
+                echo '<span style="color:green">Found in database</span>';
+            else:
+                echo '<span style="color:red">Error, not found in database. Try deactivating and reactivating plugin, if that still doesn\'t help try removing and re-installing plugin</span>';
+            endif;
+            echo  '</p>';
+
+        endforeach;
+        echo '</pre>';
+        
+
+
+        //check cron settings
+        $cron_jobs = get_option( 'cron' );
+        echo '<h2>Scheduled Jobs</h2>';
+        echo '<p>Note: the timings on the page show the cached page load data, the job can run and update these values during page load, these are the settings at the start of page load. When they get executed these time values update here on the next page load.</p>';
+
+        foreach( $cron_jobs as $cron_timestamp => $cron_job_array){
+            if( is_array($cron_job_array)){
+                foreach( $cron_job_array as $cron_job_slug => $cron_job_data_array){
+                    if( stripos($cron_job_slug, 'haven_' ) !== false  ){
+                        echo '<h4>Job Slug: '.$cron_job_slug.'</h4>';
+                        echo '<p>Ran at: ' . date('c', $cron_timestamp) . ' (' . $cron_timestamp . ')</p>';
+                        //echo '<pre>';
+                        //print_r($cron_job_data_array);
+                        //echo '</pre>';
+                    }
+                }
+            }
+
+        }
+
+        
+
+        $next_haven_update_event = wp_next_scheduled('haven_update_event');
+        if( $next_haven_update_event !== false ){
+            echo '<h4>Next haven update</h4>';
+            echo '<p>Net update due at: ' . date('c', $next_haven_update_event) . ' (' . $next_haven_update_event . ')</p>';
+            $now_time = time();
+            echo '<p>Server time now: ' . date('c', $now_time) . ' (' . $now_time . ') </p>';
+        }else{
+            echo '<h4>Error: No haven update scheduled. Try deactivating and reactivating the plugin</h4>';
+        }
+
+
+        $height = get_transient( 'haven_gateway_network_height' );
+        echo '<p>Current cached gateway height: <b>' . $height . '</b></p>';
+
+        is_haven_debug();
+
     }
 
 }
